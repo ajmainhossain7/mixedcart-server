@@ -8,7 +8,7 @@ const orderSchema = new mongoose.Schema({
             price: { type: Number, required: true },
         }
     ],
-    totalPrice: { type: Number, required: true },
+    totalAmount: { type: Number, required: true },
     address: { 
         fullName: { type: String, required: true },
         street: { type: String, required: true },
@@ -16,7 +16,7 @@ const orderSchema = new mongoose.Schema({
         postalCode: { type: String, required: true },
         country: { type: String, required: true },
     },
-    paymentId: { type: String, required: true },
+    paymentId: { type: String },
     status: { type: String, enum: ['Pending', 'Processing', 'Shipped', 'Delivered'], default: 'Pending' },
 }, { timestamps: true });
 

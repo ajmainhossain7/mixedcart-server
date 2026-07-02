@@ -13,15 +13,15 @@ const createOrder = async (req, res) => {
             const order = new Order({
                 user: req.user._id,
                 items,
-                totalPrice,
+                totalAmount,
                 address,
                 paymentId,
             });
             await order.save();
             // Send email notification to the user
-            const message = `Dear ${req.user.name},\n\nYour order has been successfully placed. Here are the details:\n\nOrder ID: ${order._id}\nTotal Price: $${totalPrice}\n\nThank you for shopping with us!`;
+            const message = `Dear ${req.user.name},\n\nYour order has been successfully placed. Here are the details:\n\nOrder ID: ${order._id}\nTotal Price: $${totalAmount}\n\nThank you for shopping with us!`;
             
-            await sendEmail(req.user.email, 'Order Confirmation', emailContent);
+            await sendEmail(req.user.email, 'Order Confirmation', message);
             res.status(201).json(order);
         }
     } catch (error) {
@@ -31,11 +31,37 @@ const createOrder = async (req, res) => {
 
 const myOrders = async (req, res) => {
     try {
-        const orders = await Order.find({ user: req.user._id }).populate(`userId`, `id name`);
+        const orders = await Order.find({ user: req.user._id }).populate(`items.product`, 'name price');
         res.json(orders);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 
-module.exports = { createOrder, myOrders };
+const getOrders = async (req, res) => {
+    try {
+        const orders = await Order.find().populate('user', 'id name');
+        res.json(orders);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+const updateOrderStatus = async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        const { status } = req.body;
+        if (order) {
+            order.status = status || order.status;
+            await order.save();
+            res.json({ message: 'Order status updated', order });
+        } else {
+            res.status(404).json({ message: 'Order not found' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+
+module.exports = { createOrder, myOrders, getOrders, updateOrderStatus };

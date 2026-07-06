@@ -47,6 +47,8 @@ const getOrders = async (req, res) => {
     }
 };
 
+const Product = require('../model/Product');
+
 const updateOrderStatus = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id);
@@ -63,5 +65,74 @@ const updateOrderStatus = async (req, res) => {
     }
 };
 
+// Get orders containing products for the logged-in seller/company
+const getSellerOrders = async (req, res) => {
+    try {
+        const products = await Product.find({ seller: req.user._id });
+        const productIds = products.map(p => p._id.toString());
 
-module.exports = { createOrder, myOrders, getOrders, updateOrderStatus };
+        const orders = await Order.find({
+            'items.product': { $in: productIds }
+        }).populate('user', 'name email').populate('items.product', 'name price imageUrl seller');
+
+        const formattedOrders = orders.map(order => {
+            const sellerItems = order.items.filter(item => 
+                item.product && item.product.seller.toString() === req.user._id.toString()
+            );
+
+            const sellerTotal = sellerItems.reduce((acc, item) => acc + (item.price * item.qty), 0);
+
+            return {
+                _id: order._id,
+                user: order.user,
+                address: order.address,
+                createdAt: order.createdAt,
+                items: sellerItems,
+                sellerTotal
+            };
+        });
+
+        res.json(formattedOrders);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// Update fulfillment status for a specific item in the seller's order
+const updateSellerOrderItemStatus = async (req, res) => {
+    try {
+        const { orderId, productId } = req.params;
+        const { status } = req.body;
+
+        const order = await Order.findById(orderId);
+        if (!order) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        const item = order.items.find(it => it.product.toString() === productId);
+        if (!item) {
+            return res.status(404).json({ message: 'Product item not found in this order' });
+        }
+
+        const product = await Product.findById(productId);
+        if (!product || product.seller.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Not authorized to fulfill this product' });
+        }
+
+        item.status = status;
+        await order.save();
+
+        res.json({ message: 'Item status updated successfully', order });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+module.exports = { 
+    createOrder, 
+    getOrders, 
+    myOrders, 
+    updateOrderStatus,
+    getSellerOrders,
+    updateSellerOrderItemStatus
+};

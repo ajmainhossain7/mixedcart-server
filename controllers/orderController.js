@@ -1,11 +1,11 @@
-const Order = require('../models/orderModel');
+const Order = require('../model/Order');
 
 const sendEmail = require('../utils/sendEmail');
 
 // Create a new order
 const createOrder = async (req, res) => {
     try {
-        const { items, totalPrice, address, paymentId } = req.body;
+        const { items, totalAmount, address, paymentId } = req.body;
         if (!items || items.length === 0) {
             return res.status(400).json({ message: 'No order items' });
         }

@@ -31,7 +31,10 @@ const createProduct = async (req, res) => {
             const result = await cloudinary.uploader.upload(req.file.path);
             imageUrl = result.secure_url;
         }
-        const product = new Product({ name, description, price, category, stock, imageUrl });
+        const seller = req.user._id;
+        const sellerType = req.user.role === 'admin' ? 'Admin' : 'Company';
+        
+        const product = new Product({ name, description, price, category, stock, imageUrl, seller, sellerType });
         const savedProduct = await product.save();
         res.status(201).json(savedProduct);
     } catch (error) {
@@ -45,6 +48,10 @@ const updateProduct = async (req, res) => {
         const { name, description, price, category, stock } = req.body;
         const product = await Product.findById(req.params.id);
         if (product) {
+            // Verify authorization
+            if (req.user.role !== 'admin' && product.seller.toString() !== req.user._id.toString()) {
+                return res.status(403).json({ message: 'Not authorized to update this product' });
+            }
             product.name = name || product.name;
             product.description = description || product.description;
             product.price = price || product.price;
@@ -69,7 +76,11 @@ const deleteProduct = async (req, res) => {
     try {
         const product = await Product.findById(req.params.id);
         if (product) {
-            await product.remove();
+            // Verify authorization
+            if (req.user.role !== 'admin' && product.seller.toString() !== req.user._id.toString()) {
+                return res.status(403).json({ message: 'Not authorized to delete this product' });
+            }
+            await Product.deleteOne({ _id: req.params.id });
             res.json({ message: 'Product removed' });
         } else {
             res.status(404).json({ message: 'Product not found' });

@@ -10,7 +10,7 @@ const genarateToken = (id) => {
 }
 
 const registerUser = async (req, res) => {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
     try {
         const exsistingUser = await User.findOne({ email });
         if (exsistingUser) {
@@ -25,7 +25,7 @@ const registerUser = async (req, res) => {
         // TODO: OTP Sending and verification email
         // TODO: Implement JWT token generation for user authentication
         // TODO: Welcome email after successful registration
-        const newUser = await User.create({ name, email, password: hashedPassword });
+        const newUser = await User.create({ name, email, password: hashedPassword, role: role || 'user' });
         if (newUser) {
             const otp = Math.floor(100000 + Math.random() * 900000); // Generate a random 6-digit OTP
             const message = `
@@ -78,8 +78,45 @@ const getUsers = async (req, res) => {
     }
 };
 
+// Toggle product in wishlist (Add/Remove)
+const toggleWishlist = async (req, res) => {
+    try {
+        const { productId } = req.body;
+        const user = await User.findById(req.user._id);
+
+        if (!user.wishlist) {
+            user.wishlist = [];
+        }
+
+        const index = user.wishlist.indexOf(productId);
+        if (index > -1) {
+            user.wishlist.splice(index, 1);
+            await user.save();
+            return res.json({ message: 'Removed from wishlist', wishlist: user.wishlist });
+        } else {
+            user.wishlist.push(productId);
+            await user.save();
+            return res.json({ message: 'Added to wishlist', wishlist: user.wishlist });
+        }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// Get populated wishlist
+const getWishlist = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).populate('wishlist');
+        res.json(user.wishlist || []);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     registerUser,
     loginUser,
-    getUsers
+    getUsers,
+    toggleWishlist,
+    getWishlist
 };

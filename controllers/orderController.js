@@ -182,7 +182,84 @@ const updateSellerOrderItemStatus = async (req, res) => {
         item.status = status;
         await order.save();
 
+        // Populate buyer info for shipment update email notification
+        const populatedOrder = await Order.findById(orderId).populate('user', 'name email');
+        const productName = product ? product.name : 'Your item';
+
+        if (populatedOrder && populatedOrder.user && populatedOrder.user.email) {
+            const subject = `Shipment Update: ${productName}`;
+            const text = `Dear ${populatedOrder.user.name},\n\nYour item "${productName}" from Order ${orderId} has been updated to "${status}".\n\nThank you for shopping with us!`;
+            const html = `
+                <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px; border: 1px solid #e5e5e5; background-color: #ffffff;">
+                    <div style="text-align: center; margin-bottom: 40px;">
+                        <h1 style="font-family: Georgia, serif; font-size: 28px; margin: 0; color: #111111; letter-spacing: 0.1em; text-transform: uppercase;">MixedCart</h1>
+                        <p style="color: #666666; font-size: 14px; margin-top: 4px;">Shipment status notification</p>
+                    </div>
+
+                    <p style="font-size: 15px; color: #333333;">Dear ${populatedOrder.user.name},</p>
+                    <p style="font-size: 14px; color: #555555; line-height: 1.6;">Good news! The seller has updated the fulfillment status of your item:</p>
+
+                    <div style="margin: 30px 0; padding: 24px; background-color: #f9f9f9; border: 1px solid #eeeeee; text-align: center;">
+                        <span style="display: block; font-size: 12px; text-transform: uppercase; color: #888888; margin-bottom: 8px;">Product Name</span>
+                        <strong style="font-size: 16px; color: #111111; display: block; margin-bottom: 16px;">${productName}</strong>
+                        
+                        <span style="display: block; font-size: 12px; text-transform: uppercase; color: #888888; margin-bottom: 8px;">New Shipment Status</span>
+                        <span style="display: inline-block; padding: 6px 16px; background-color: #2ecc71; color: #ffffff; font-size: 13px; font-weight: 700; border-radius: 4px; text-transform: uppercase;">${status}</span>
+                    </div>
+
+                    <p style="font-size: 13px; color: #777777;">Order Reference: <span style="font-family: monospace;">${orderId}</span></p>
+
+                    <div style="margin-top: 40px; border-top: 1px solid #e5e5e5; padding-top: 20px; text-align: center; font-size: 12px; color: #999999;">
+                        <p>This is an automated shipping notification. If you have questions about your delivery, please contact support.</p>
+                    </div>
+                </div>
+            `;
+            try {
+                await sendEmail(populatedOrder.user.email, subject, text, html);
+            } catch (err) {
+                console.error('Failed to send status update email:', err);
+            }
+        }
+
         res.json({ message: 'Item status updated successfully', order });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// Cancel an order (customer flow)
+const cancelOrder = async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        if (!order) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        // Verify authorization
+        if (order.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+            return res.status(403).json({ message: 'Not authorized to cancel this order' });
+        }
+
+        // Verify status
+        if (order.status !== 'Pending') {
+            return res.status(400).json({ message: 'Only pending orders can be cancelled' });
+        }
+
+        order.status = 'Cancelled';
+        order.items.forEach(item => {
+            item.status = 'Cancelled';
+        });
+
+        await order.save();
+
+        // Restore stock
+        for (const item of order.items) {
+            await Product.findByIdAndUpdate(item.product, {
+                $inc: { stock: item.qty }
+            });
+        }
+
+        res.json({ message: 'Order cancelled successfully', order });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -194,5 +271,6 @@ module.exports = {
     myOrders, 
     updateOrderStatus,
     getSellerOrders,
-    updateSellerOrderItemStatus
+    updateSellerOrderItemStatus,
+    cancelOrder
 };

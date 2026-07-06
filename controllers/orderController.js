@@ -18,10 +18,70 @@ const createOrder = async (req, res) => {
                 paymentId,
             });
             await order.save();
-            // Send email notification to the user
-            const message = `Dear ${req.user.name},\n\nYour order has been successfully placed. Here are the details:\n\nOrder ID: ${order._id}\nTotal Price: $${totalAmount}\n\nThank you for shopping with us!`;
             
-            await sendEmail(req.user.email, 'Order Confirmation', message);
+            // Populate product details for invoice rendering
+            const populatedOrder = await Order.findById(order._id).populate('items.product');
+
+            // Send email notification to the user
+            const textMessage = `Dear ${req.user.name},\n\nYour order has been successfully placed. Here are the details:\n\nOrder ID: ${order._id}\nTotal Price: $${totalAmount}\n\nThank you for shopping with us!`;
+            
+            const itemsHtml = populatedOrder.items.map(item => `
+                <tr>
+                    <td style="padding: 12px; border-bottom: 1px solid #eeeeee; text-align: left;">${item.product ? item.product.name : 'Curated Item'}</td>
+                    <td style="padding: 12px; border-bottom: 1px solid #eeeeee; text-align: center;">${item.qty}</td>
+                    <td style="padding: 12px; border-bottom: 1px solid #eeeeee; text-align: right;">$${item.price.toFixed(2)}</td>
+                </tr>
+            `).join('');
+
+            const htmlMessage = `
+                <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px; border: 1px solid #e5e5e5; background-color: #ffffff;">
+                    <div style="text-align: center; margin-bottom: 40px;">
+                        <h1 style="font-family: Georgia, serif; font-size: 28px; margin: 0; color: #111111; letter-spacing: 0.1em; text-transform: uppercase;">MixedCart</h1>
+                        <p style="color: #666666; font-size: 14px; margin-top: 4px;">Thank you for your purchase</p>
+                    </div>
+
+                    <p style="font-size: 15px; color: #333333;">Dear ${req.user.name},</p>
+                    <p style="font-size: 14px; color: #555555; line-height: 1.6;">Your order has been successfully placed. Here are your transaction details:</p>
+
+                    <div style="margin: 30px 0; padding: 20px; background-color: #f9f9f9; border: 1px solid #eeeeee;">
+                        <span style="display: block; font-size: 11px; text-transform: uppercase; color: #888888; margin-bottom: 4px;">Order Number</span>
+                        <span style="font-family: monospace; font-size: 14px; color: #111111;">${order._id}</span>
+                    </div>
+
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 14px; color: #333333;">
+                        <thead>
+                            <tr style="background-color: #f5f5f5;">
+                                <th style="padding: 12px; text-align: left; font-weight: 600;">Product</th>
+                                <th style="padding: 12px; text-align: center; font-weight: 600;">Qty</th>
+                                <th style="padding: 12px; text-align: right; font-weight: 600;">Price</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${itemsHtml}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="2" style="padding: 12px; font-weight: 600; text-align: right;">Total Amount</td>
+                                <td style="padding: 12px; font-weight: 700; text-align: right; font-size: 16px; color: #2ecc71;">$${totalAmount.toFixed(2)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+
+                    <div style="border-top: 1px solid #e5e5e5; padding-top: 30px; font-size: 13px; color: #666666; line-height: 1.6;">
+                        <h3 style="font-size: 14px; margin: 0 0 10px 0; color: #111111;">Shipping Address</h3>
+                        <p style="margin: 0;">${address.fullName}</p>
+                        <p style="margin: 0;">${address.street}</p>
+                        <p style="margin: 0;">${address.city}, ${address.postalCode}</p>
+                        <p style="margin: 0;">${address.country}</p>
+                    </div>
+
+                    <div style="margin-top: 40px; border-top: 1px solid #e5e5e5; padding-top: 20px; text-align: center; font-size: 12px; color: #999999;">
+                        <p>This is an automated receipt email. If you have any questions, please contact support.</p>
+                    </div>
+                </div>
+            `;
+            
+            await sendEmail(req.user.email, 'Order Confirmation', textMessage, htmlMessage);
             res.status(201).json(order);
         }
     } catch (error) {

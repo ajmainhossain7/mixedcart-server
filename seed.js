@@ -1,3 +1,6 @@
+const dns = require('node:dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const bcrypt = require('bcryptjs');
@@ -51,6 +54,21 @@ const seedDB = async () => {
             }));
             await Product.insertMany(productsToSeed);
             console.log(`${productsToSeed.length} Products successfully seeded!`);
+        }
+
+        // 3. Seed Coupons
+        const Coupon = require('./model/Coupon');
+        const couponCount = await Coupon.countDocuments();
+        if (couponCount > 0) {
+            console.log(`Database already has ${couponCount} coupons. Skipping coupon seeding.`);
+        } else {
+            const expiryDate = new Date();
+            expiryDate.setFullYear(expiryDate.getFullYear() + 1); // 1 year from now
+            await Coupon.insertMany([
+                { code: 'WELCOME10', discountPercentage: 10, expiryDate },
+                { code: 'LIFESTYLE25', discountPercentage: 25, expiryDate }
+            ]);
+            console.log('Default coupons successfully seeded!');
         }
 
         mongoose.connection.close();

@@ -17,33 +17,97 @@ const registerUser = async (req, res) => {
             return res.status(400).json({ message: 'User already exists' });
         }
 
-        // TODO: Hash the password before saving to the database for security
-
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
-        // TODO: Implement proper validation for the input data (name, email, password)
-        // TODO: OTP Sending and verification email
-        // TODO: Implement JWT token generation for user authentication
-        // TODO: Welcome email after successful registration
         const newUser = await User.create({ name, email, password: hashedPassword, role: role || 'user' });
+        
         if (newUser) {
-            const otp = Math.floor(100000 + Math.random() * 900000); // Generate a random 6-digit OTP
+            const otp = Math.floor(100000 + Math.random() * 900000).toString(); // Generate a random 6-digit OTP
+            newUser.otp = otp;
+            newUser.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
+            await newUser.save();
+
             const message = `
             Welcome to MixedCart, ${name}!
-            Your OTP for registration is: ${otp}`;
+            Your OTP for registration is: ${otp}
+
+            This OTP is valid for 10 minutes.`;
 
             await sendEmail(email, 'Welcome to MixedCart - OTP Verification', message);
 
             res.status(201).json({
                 _id: newUser._id,
-                name: newUser.name,
                 email: newUser.email,
-                role: newUser.role,
-                token: genarateToken(newUser._id),
+                message: 'Registration successful! Verification OTP sent.'
             });
-        }else {
+        } else {
             res.status(400).json({ message: 'Invalid user data' });
         }
+    } catch (error) {
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+const verifyOTP = async (req, res) => {
+    const { email, otp } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (user.verified) {
+            return res.status(400).json({ message: 'User is already verified' });
+        }
+
+        if (user.otp !== otp || user.otpExpires < Date.now()) {
+            return res.status(400).json({ message: 'Invalid or expired OTP' });
+        }
+
+        // Mark user as verified
+        user.verified = true;
+        user.otp = undefined;
+        user.otpExpires = undefined;
+        await user.save();
+
+        res.status(200).json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            verified: user.verified,
+            token: genarateToken(user._id),
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error during OTP verification' });
+    }
+};
+
+const resendOTP = async (req, res) => {
+    const { email } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (user.verified) {
+            return res.status(400).json({ message: 'User is already verified' });
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        user.otp = otp;
+        user.otpExpires = new Date(Date.now() + 10 * 60 * 1000);
+        await user.save();
+
+        const message = `
+        Your new OTP for registration is: ${otp}
+
+        This OTP is valid for 10 minutes.`;
+
+        await sendEmail(email, 'MixedCart - Resend OTP Verification', message);
+
+        res.status(200).json({ message: 'Verification OTP resent successfully.' });
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
     }
@@ -59,6 +123,7 @@ const loginUser = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 role: user.role,
+                verified: user.verified,
                 token: genarateToken(user._id),
             });
         } else {
@@ -113,10 +178,67 @@ const getWishlist = async (req, res) => {
     }
 };
 
+const forgotPassword = async (req, res) => {
+    const { email } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'User with this email does not exist' });
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        user.otp = otp;
+        user.otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
+        await user.save();
+
+        const message = `
+        You requested a password reset for your MixedCart account.
+        Your OTP for password reset is: ${otp}
+
+        This OTP is valid for 10 minutes. If you did not request this, please ignore this email.`;
+
+        await sendEmail(email, 'MixedCart - Password Reset OTP', message);
+
+        res.status(200).json({ message: 'Password reset OTP sent to your email.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+const resetPassword = async (req, res) => {
+    const { email, otp, newPassword } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (user.otp !== otp || user.otpExpires < Date.now()) {
+            return res.status(400).json({ message: 'Invalid or expired OTP' });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        user.password = hashedPassword;
+        user.otp = undefined;
+        user.otpExpires = undefined;
+        await user.save();
+
+        res.status(200).json({ message: 'Password reset successful! You can now log in.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error during password reset' });
+    }
+};
+
 module.exports = {
     registerUser,
+    verifyOTP,
+    resendOTP,
     loginUser,
     getUsers,
     toggleWishlist,
-    getWishlist
+    getWishlist,
+    forgotPassword,
+    resetPassword
 };

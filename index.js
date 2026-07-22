@@ -1,6 +1,3 @@
-const dns = require('node:dns');
-dns.setServers(['8.8.8.8', '8.8.4.4']);
-
 const expreess = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -15,7 +12,12 @@ dotenv.config();
 connectDB();
 
 const app = expreess();
-app.use(cors());
+
+const allowedOrigins = process.env.FRONTEND_URL
+    ? [process.env.FRONTEND_URL]
+    : ['http://localhost:3000'];
+
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(expreess.json());
 app.use(expreess.urlencoded({ extended: true }));
 
@@ -36,8 +38,9 @@ app.use('/api/chat', require('./routes/chatRoutes'));
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: '*', // Allow all origins for dev environment
-        methods: ['GET', 'POST']
+        origin: allowedOrigins,
+        methods: ['GET', 'POST'],
+        credentials: true
     }
 });
 
